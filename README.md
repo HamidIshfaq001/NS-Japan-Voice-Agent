@@ -178,6 +178,12 @@ returns no vehicles and an explicit instruction not to name any vehicle, price o
 number. The agent then takes the caller's details instead of improvising. This is covered
 by tests and was verified against the live agent.
 
+**The n8n credential must use a bare domain.** The GoHighLevel Header Auth credential
+restricts the token to `services.leadconnectorhq.com`. n8n wants the bare host there -
+writing `https://services.leadconnectorhq.com` silently blocks every request and the node
+reports an empty `{"error":{"level":"error"}}` with no status code. `scripts/deploy_n8n.py`
+sets this correctly; if you create the credential by hand in the UI, leave the scheme off.
+
 **FOB only.** Every price in the stock list is the vehicle price alone. The agent states
 FOB prices but is forbidden from quoting a landed or delivered total — freight, insurance,
 duties and city delivery are quoted by the sales team.

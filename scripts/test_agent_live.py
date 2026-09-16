@@ -159,10 +159,16 @@ QA = [
      [("gives Mon-Fri", any_of("monday")),
       ("gives Japan time", any_of("japan"))]),
 
+    # Commercially the most important answer on the call, so assert both halves of
+    # it rather than one loose phrase: the price is the vehicle alone, AND the rest
+    # is charged on top.
     ("FOB price meaning",
      ["Does the price on your website include shipping to my port?"],
-     [("says it does not include freight", any_of("not include", "does not", "doesn't")),
-      ("mentions the vehicle price only or FOB", any_of("vehicle only", "vehicle price", "fob"))]),
+     [("says the listed price is the vehicle only",
+       any_of("vehicle price only", "vehicle only", "fob")),
+      ("says shipping and duties are charged on top",
+       any_of("not include", "not included", "separately", "extra", "added",
+              "at destination", "on top"))]),
 
     ("payment methods",
      ["How can I pay you?"],
