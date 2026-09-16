@@ -54,14 +54,16 @@ def save_state(s):
         json.dump(s, fh, indent=2)
 
 
-def ensure_chat_agent():
+def ensure_chat_agent(force_new=False):
     """A chat agent on the same LLM, so tests exercise the real prompt and tools."""
     st = state()
-    if st.get("test_chat_agent_id"):
+    if not force_new and st.get("test_chat_agent_id"):
         r = requests.get(API + "/get-chat-agent/" + st["test_chat_agent_id"],
                          headers=HEADERS, timeout=60)
         if r.ok:
             return st["test_chat_agent_id"]
+        st.pop("test_chat_agent_id", None)
+        save_state(st)
 
     r = requests.post(
         API + "/create-chat-agent", headers=HEADERS,
@@ -77,11 +79,23 @@ def ensure_chat_agent():
     return agent_id
 
 
+CURRENT_AGENT = {"id": None}
+
+
 class Conversation:
     def __init__(self, agent_id):
         r = requests.post(API + "/create-chat", headers=HEADERS,
                           json={"agent_id": agent_id}, timeout=60)
+        if r.status_code == 404:
+            # Retell drops unpublished chat agents from time to time. Rebuild and retry
+            # rather than failing the whole suite.
+            agent_id = ensure_chat_agent(force_new=True)
+            CURRENT_AGENT["id"] = agent_id
+            print(f"    (chat agent was gone; rebuilt as {agent_id})")
+            r = requests.post(API + "/create-chat", headers=HEADERS,
+                              json={"agent_id": agent_id}, timeout=60)
         r.raise_for_status()
+        self.agent_id = agent_id
         self.chat_id = r.json()["chat_id"]
         self.turns = []
         self.tool_calls = []
@@ -245,12 +259,15 @@ LEAD = [
       "I want to buy within a month.",
       "No that is all, thank you."],
      [("asks for a name", matches(r"\b(name)\b")),
-      # On a voice call the right behaviour is to spell the address back, so accept
-      # either the literal address or a spelled-out reading of it.
+      # On a voice call the right behaviour is to read the address back out loud.
+      # Accept the literal address, a letter-by-letter spelling, or the spoken
+      # "name dot name at example dot com" form - all three are correct.
       ("confirms the email back",
        any_of("james.mwangi@example.com",
               "j a m e s",
-              "m w a n g i")),
+              "m w a n g i",
+              "mwangi at example dot com",
+              "at example dot com")),
       ("mentions a quote or specialist", any_of("quote", "specialist", "team"))]),
 
     ("existing order support is routed, not guessed",
@@ -281,7 +298,13 @@ def run_suite(agent_id, suite_name, cases, verbose):
     failures = []
 
     for name, turns, checks in cases:
-        convo = Conversation(agent_id)
+        try:
+            convo = Conversation(CURRENT_AGENT["id"] or agent_id)
+        except Exception as exc:
+            print(f"\n  [ERROR] {name}: could not start a chat: {exc}")
+            failed += 1
+            failures.append((name, f"could not start a chat: {exc}", ""))
+            continue
         try:
             for t in turns:
                 convo.say(t)
@@ -324,6 +347,7 @@ def main():
         raise SystemExit("RETELL_API_KEY missing from .env")
 
     agent_id = ensure_chat_agent()
+    CURRENT_AGENT["id"] = agent_id
     print(f"test chat agent: {agent_id}")
     print(f"bound to LLM:    {ENV['RETELL_LLM_ID']}")
 

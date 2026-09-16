@@ -3,5 +3,6 @@
   "last_deploy": "2026-09-16T13:09:12Z",
   "agent_id": "agent_da722581e2d2316443e7a042d1",
   "llm_id": "llm_6c97acc645b41073d8d5760c0b55",
-  "test_chat_agent_id": "agent_33a2f30d1e7237fb81fbac7626"
+  "n8n_ghl_credential_id": "TXUvTD2lowlJ3q1A",
+  "test_chat_agent_id": "agent_2c82ac868ca011202c57bfc32e"
 }

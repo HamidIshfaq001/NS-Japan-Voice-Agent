@@ -73,7 +73,13 @@
         "method": "POST",
         "url": "https://services.leadconnectorhq.com/contacts/upsert",
         "options": {
-          "timeout": 15000
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
         },
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -114,7 +120,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Pull the contact id out of whichever shape GoHighLevel returned.\nconst res = $json || {};\nconst contact = res.contact || res.data || res;\nconst contactId = contact.id || contact._id || contact.contactId || null;\n\nif (!contactId) {\n  throw new Error(\n    'GoHighLevel did not return a contact id. Response: ' +\n    JSON.stringify(res).slice(0, 500)\n  );\n}\n\nreturn [{ json: { contactId, ghlContact: contact } }];\n"
+        "jsCode": "// Pull the contact id out of whichever shape GoHighLevel returned.\n// The node runs with fullResponse + neverError, so $json is { statusCode, body, ... }\n// on success and an { error } object if the request could not be made at all.\nconst res = $json || {};\nconst status = res.statusCode || null;\nconst body = res.body !== undefined ? res.body : res;\n\nconst contact = (body && (body.contact || body.data)) || body || {};\nconst contactId = contact.id || contact._id || contact.contactId || null;\n\nif (!contactId) {\n  let detail;\n  if (res.error) {\n    detail = 'the request to GoHighLevel could not be made';\n  } else if (status && status >= 400) {\n    const msg = (body && (body.message || body.error)) || '';\n    detail = `GoHighLevel returned HTTP ${status}` + (msg ? ': ' + JSON.stringify(msg) : '');\n  } else {\n    detail = 'no contact id in the response: ' + JSON.stringify(body).slice(0, 300);\n  }\n  // Do not throw. The caller is on the line, and Build Response turns this into a\n  // calm fallback rather than a failed tool call.\n  return [{ json: { contactId: null, ghlError: detail, ghlStatus: status } }];\n}\n\nreturn [{ json: { contactId, ghlContact: contact, ghlStatus: status } }];\n"
       },
       "id": "f6868f31-2957-5b2c-a854-75b959402522",
       "name": "Extract Contact ID",
@@ -130,7 +136,13 @@
         "method": "POST",
         "url": "={{ 'https://services.leadconnectorhq.com/contacts/' + $json.contactId + '/notes' }}",
         "options": {
-          "timeout": 15000
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
         },
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -208,7 +220,13 @@
         "method": "POST",
         "url": "https://services.leadconnectorhq.com/opportunities/",
         "options": {
-          "timeout": 15000
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
         },
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -249,7 +267,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Assemble what the voice agent hears back.\nconst normalized = $('Normalize Lead').first().json;\n\nlet contactId = null;\ntry {\n  contactId = $('Extract Contact ID').first().json.contactId;\n} catch (e) {\n  contactId = null;\n}\n\nlet opportunityId = null;\ntry {\n  const opp = $('GHL Create Opportunity').first().json;\n  opportunityId = (opp.opportunity && opp.opportunity.id) || opp.id || null;\n} catch (e) {\n  opportunityId = null;\n}\n\nconst ok = Boolean(contactId);\n\nreturn [\n  {\n    json: {\n      ok,\n      crm: 'GoHighLevel',\n      contact_id: contactId,\n      opportunity_id: opportunityId,\n      lead: normalized.lead_summary,\n      message: ok\n        ? 'Lead saved to the CRM. Confirm to the caller that a specialist will email a ' +\n          'full quote including shipping to their port, usually within one business day.'\n        : 'The CRM did not confirm the save. Do not alarm the caller - tell them you ' +\n          'have their details and the team will be in touch, and offer ' +\n          'info@nsjapanautos.com as a backup.',\n    },\n  },\n];\n"
+        "jsCode": "// Assemble what the voice agent hears back.\nconst normalized = $('Normalize Lead').first().json;\n\nlet contactId = null;\nlet ghlError = null;\ntry {\n  const ex = $('Extract Contact ID').first().json;\n  contactId = ex.contactId;\n  ghlError = ex.ghlError || null;\n} catch (e) {\n  ghlError = 'the CRM step did not run';\n}\n\nlet opportunityId = null;\ntry {\n  const raw = $('GHL Create Opportunity').first().json;\n  const opp = raw.body !== undefined ? raw.body : raw;\n  opportunityId = (opp.opportunity && opp.opportunity.id) || opp.id || null;\n} catch (e) {\n  opportunityId = null;\n}\n\nconst ok = Boolean(contactId);\n\nreturn [\n  {\n    json: {\n      ok,\n      crm: 'GoHighLevel',\n      contact_id: contactId,\n      opportunity_id: opportunityId,\n      crm_error: ghlError,\n      lead: normalized.lead_summary,\n      message: ok\n        ? 'Lead saved to the CRM. Confirm to the caller that a specialist will email a ' +\n          'full quote including shipping to their port, usually within one business day.'\n        : 'The CRM did not confirm the save. Do not alarm the caller - tell them you ' +\n          'have their details and the team will be in touch, and offer ' +\n          'info@nsjapanautos.com as a backup.',\n    },\n  },\n];\n"
       },
       "id": "cbd54afd-6064-574a-931a-4ebc9c83f4e6",
       "name": "Build Response",

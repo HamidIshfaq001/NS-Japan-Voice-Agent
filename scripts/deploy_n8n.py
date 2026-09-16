@@ -110,7 +110,14 @@ def ensure_ghl_credential(api, env, state):
     value = token if token.lower().startswith("bearer ") else "Bearer " + token
     cred_id = api.create_credential(
         GHL_CRED_NAME, "httpHeaderAuth",
-        {"name": "Authorization", "value": value},
+        {
+            "name": "Authorization",
+            "value": value,
+            # Scope the token to GoHighLevel so it can never be sent anywhere else,
+            # even if a node in this instance is later pointed at another host.
+            "allowedHttpRequestDomains": "domains",
+            "allowedDomains": "services.leadconnectorhq.com",
+        },
     )
     state["n8n_ghl_credential_id"] = cred_id
     print(f"created n8n credential '{GHL_CRED_NAME}' ({cred_id})")

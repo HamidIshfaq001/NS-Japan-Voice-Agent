@@ -125,12 +125,19 @@ def respond_node(name, pos, body_expr):
 
 
 def http_node(name, pos, url, method="GET", body_expr=None, headers=None,
-              use_header_auth=False, on_error=None, timeout_ms=15000):
+              use_header_auth=False, on_error=None, timeout_ms=15000,
+              full_response=False):
     params = {
         "method": method,
         "url": url,
         "options": {"timeout": timeout_ms},
     }
+    if full_response:
+        # Keep the status code and body instead of throwing, so a 401 or 422 from the
+        # CRM can be reported precisely rather than surfacing as an empty error object.
+        params["options"]["response"] = {
+            "response": {"fullResponse": True, "neverError": True}
+        }
     if use_header_auth:
         params["authentication"] = "genericCredentialType"
         params["genericAuthType"] = "httpHeaderAuth"
@@ -213,33 +220,50 @@ def build_inventory():
 # Workflow 2 - lead capture into GoHighLevel
 # --------------------------------------------------------------------------
 EXTRACT_JS = """// Pull the contact id out of whichever shape GoHighLevel returned.
+// The node runs with fullResponse + neverError, so $json is { statusCode, body, ... }
+// on success and an { error } object if the request could not be made at all.
 const res = $json || {};
-const contact = res.contact || res.data || res;
+const status = res.statusCode || null;
+const body = res.body !== undefined ? res.body : res;
+
+const contact = (body && (body.contact || body.data)) || body || {};
 const contactId = contact.id || contact._id || contact.contactId || null;
 
 if (!contactId) {
-  throw new Error(
-    'GoHighLevel did not return a contact id. Response: ' +
-    JSON.stringify(res).slice(0, 500)
-  );
+  let detail;
+  if (res.error) {
+    detail = 'the request to GoHighLevel could not be made';
+  } else if (status && status >= 400) {
+    const msg = (body && (body.message || body.error)) || '';
+    detail = `GoHighLevel returned HTTP ${status}` + (msg ? ': ' + JSON.stringify(msg) : '');
+  } else {
+    detail = 'no contact id in the response: ' + JSON.stringify(body).slice(0, 300);
+  }
+  // Do not throw. The caller is on the line, and Build Response turns this into a
+  // calm fallback rather than a failed tool call.
+  return [{ json: { contactId: null, ghlError: detail, ghlStatus: status } }];
 }
 
-return [{ json: { contactId, ghlContact: contact } }];
+return [{ json: { contactId, ghlContact: contact, ghlStatus: status } }];
 """
 
 BUILD_RESPONSE_JS = """// Assemble what the voice agent hears back.
 const normalized = $('Normalize Lead').first().json;
 
 let contactId = null;
+let ghlError = null;
 try {
-  contactId = $('Extract Contact ID').first().json.contactId;
+  const ex = $('Extract Contact ID').first().json;
+  contactId = ex.contactId;
+  ghlError = ex.ghlError || null;
 } catch (e) {
-  contactId = null;
+  ghlError = 'the CRM step did not run';
 }
 
 let opportunityId = null;
 try {
-  const opp = $('GHL Create Opportunity').first().json;
+  const raw = $('GHL Create Opportunity').first().json;
+  const opp = raw.body !== undefined ? raw.body : raw;
   opportunityId = (opp.opportunity && opp.opportunity.id) || opp.id || null;
 } catch (e) {
   opportunityId = null;
@@ -254,6 +278,7 @@ return [
       crm: 'GoHighLevel',
       contact_id: contactId,
       opportunity_id: opportunityId,
+      crm_error: ghlError,
       lead: normalized.lead_summary,
       message: ok
         ? 'Lead saved to the CRM. Confirm to the caller that a specialist will email a ' +
@@ -282,7 +307,7 @@ def build_lead():
         http_node(
             "GHL Upsert Contact", [200, 0], base + "/contacts/upsert",
             method="POST", body_expr="={{ JSON.stringify($json.contact) }}",
-            headers=hdrs, use_header_auth=True,
+            headers=hdrs, use_header_auth=True, full_response=True,
             on_error="continueRegularOutput",
         ),
         code_node("Extract Contact ID", [420, 0], EXTRACT_JS),
@@ -291,7 +316,7 @@ def build_lead():
             "={{ '" + base + "/contacts/' + $json.contactId + '/notes' }}",
             method="POST",
             body_expr="={{ JSON.stringify({ body: $('Normalize Lead').first().json.note }) }}",
-            headers=hdrs, use_header_auth=True,
+            headers=hdrs, use_header_auth=True, full_response=True,
             on_error="continueRegularOutput",
         ),
         {
@@ -330,7 +355,7 @@ def build_lead():
                 "$('Normalize Lead').first().json.opportunity, "
                 "{ contactId: $('Extract Contact ID').first().json.contactId })) }}"
             ),
-            headers=hdrs, use_header_auth=True,
+            headers=hdrs, use_header_auth=True, full_response=True,
             on_error="continueRegularOutput",
         ),
         code_node("Build Response", [1300, 0], BUILD_RESPONSE_JS),
