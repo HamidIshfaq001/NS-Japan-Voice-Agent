@@ -10,9 +10,12 @@
     "serve": "node scripts/local_test_server.js",
     "build:n8n": "python scripts/build_n8n_workflows.py",
     "refresh": "python scripts/refresh.py",
-    "deploy": "python scripts/deploy_retell.py",
-    "test:live": "python scripts/test_agent_live.py"
+    "test:live": "python scripts/test_agent_live.py",
+    "deploy:n8n": "python scripts/deploy_n8n.py",
+    "deploy:retell": "python scripts/deploy_retell.py"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "license": "UNLICENSED"
 }

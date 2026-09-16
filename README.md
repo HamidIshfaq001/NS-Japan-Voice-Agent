@@ -79,26 +79,26 @@ node --version                      # Node 18+ for the tests
 cp .env.example .env                # then fill it in
 ```
 
-### 2. Import the n8n workflows
+### 2. Deploy the n8n workflows
 
-In n8n, **Workflows → Import from File** for each of:
+```bash
+python scripts/deploy_n8n.py
+```
 
-- `n8n/nsjapan-inventory-search.workflow.json`
-- `n8n/nsjapan-lead-to-ghl.workflow.json`
+This imports both workflows, activates them, creates the GoHighLevel Header Auth
+credential from `GHL_TOKEN`, and fills the **Config** nodes from `.env`
+(`GHL_LOCATION_ID`, `GHL_PIPELINE_ID`, `GHL_PIPELINE_STAGE_ID`, `INVENTORY_URL`).
+It matches on workflow name, so re-running updates in place instead of duplicating.
 
-Then:
+Leave `GHL_PIPELINE_ID` blank to create only the contact and a note, with no opportunity.
 
-1. Create a credential of type **Header Auth** named
-   `GoHighLevel Private Integration Token`, with name `Authorization` and value
-   `Bearer <your GHL private integration token>`. Attach it to the three GHL nodes.
-2. Open the **Config** node in the lead workflow and set `ghl_location_id`.
-   Set `ghl_pipeline_id` and `ghl_pipeline_stage_id` too if you want an opportunity
-   created; leave them blank to create only the contact and note.
-3. Open the **Config** node in the inventory workflow and check `inventory_url` points at
-   your repo's `data/inventory.json` raw URL.
-4. **Activate** both workflows, then copy the production webhook URLs.
+To do it by hand instead, use **Workflows → Import from File** on
+`n8n/nsjapan-inventory-search.workflow.json` and `n8n/nsjapan-lead-to-ghl.workflow.json`,
+then create a **Header Auth** credential named `GoHighLevel Private Integration Token`
+(header `Authorization`, value `Bearer <token>`), attach it to the three GHL nodes, fill
+the Config nodes, and activate both.
 
-The agent expects them at:
+The agent expects the webhooks at:
 
 ```
 {N8N_BASE_URL}/webhook/nsjapan-inventory-search
@@ -128,6 +128,7 @@ npm run test:live                 # scripted conversations against the deployed 
 python scripts/refresh.py         # re-read stock and filter options from the website
 python scripts/refresh.py --deploy  # ... and push the result to Retell
 python scripts/build_n8n_workflows.py  # rebuild workflow JSON after editing n8n/src/*.js
+python scripts/deploy_n8n.py           # push workflow changes into n8n
 ```
 
 ### Testing without n8n
@@ -171,6 +172,11 @@ the sales team confirms exact mileage on the quote.
 
 **One vehicle is unreachable.** The site reports 208 vehicles; the pager exposes 207. The
 refresh job reports the difference rather than hiding it.
+
+**The stock lookup fails safe.** If the snapshot host is unreachable, the workflow
+returns no vehicles and an explicit instruction not to name any vehicle, price or stock
+number. The agent then takes the caller's details instead of improvising. This is covered
+by tests and was verified against the live agent.
 
 **FOB only.** Every price in the stock list is the vehicle price alone. The agent states
 FOB prices but is forbidden from quoting a landed or delivered total — freight, insurance,

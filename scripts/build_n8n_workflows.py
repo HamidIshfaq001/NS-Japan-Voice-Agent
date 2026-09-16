@@ -125,11 +125,11 @@ def respond_node(name, pos, body_expr):
 
 
 def http_node(name, pos, url, method="GET", body_expr=None, headers=None,
-              use_header_auth=False, on_error=None):
+              use_header_auth=False, on_error=None, timeout_ms=15000):
     params = {
         "method": method,
         "url": url,
-        "options": {"timeout": 15000},
+        "options": {"timeout": timeout_ms},
     }
     if use_header_auth:
         params["authentication"] = "genericCredentialType"
@@ -192,6 +192,12 @@ def build_inventory():
         http_node(
             "Fetch Stock Snapshot", [200, 0],
             "={{ $json.inventory_url }}",
+            # A snapshot host that is down must not take the call down with it;
+            # the filter node turns an empty result into a safe spoken fallback.
+            on_error="continueRegularOutput",
+            # Short, because a caller is waiting in silence. Fetching a static JSON
+            # file takes well under a second when the host is healthy.
+            timeout_ms=8000,
         ),
         code_node("Filter Stock", [420, 0], read_js("inventory_filter.js")),
         respond_node("Respond to Retell", [640, 0], "={{ JSON.stringify($json) }}"),

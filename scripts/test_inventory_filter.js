@@ -14,10 +14,10 @@ const snapshot = JSON.parse(
 );
 const code = fs.readFileSync(path.join(ROOT, 'n8n', 'src', 'inventory_filter.js'), 'utf8');
 
-function runFilter(args) {
+function runFilter(args, snap) {
   const nodes = {
     'Retell Webhook': { json: { body: { name: 'search_inventory', call: {}, args } } },
-    'Fetch Stock Snapshot': { json: snapshot },
+    'Fetch Stock Snapshot': { json: snap === undefined ? snapshot : snap },
   };
   const $ = (name) => {
     if (!nodes[name]) throw new Error('unknown node ' + name);
@@ -146,6 +146,24 @@ check('mileage is expanded from the published thousands to real km',
 check('summary speaks mileage as a full km figure',
   /about [\d,]{4,} km/.test(r.summary_for_agent), r.summary_for_agent);
 check('response warns that mileage is approximate', /approximate/i.test(r.mileage_note));
+
+// 20. The snapshot host is unreachable
+r = runFilter({ make: 'TOYOTA' }, {});
+check('unreachable snapshot reports not-ok', r.ok === false);
+check('unreachable snapshot returns no vehicles',
+  r.vehicles.length === 0 && r.total_matches === 0);
+check('unreachable snapshot forbids inventing stock',
+  /do not name any vehicle/i.test(r.summary_for_agent), r.summary_for_agent);
+check('unreachable snapshot still steers to a lead',
+  /details|specialist|email/i.test(r.summary_for_agent));
+
+// 21. The snapshot arrives malformed
+r = runFilter({ make: 'TOYOTA' }, { vehicles: 'not-an-array' });
+check('malformed snapshot is handled like an outage', r.ok === false);
+
+// 22. A good snapshot still reports ok
+r = runFilter({ make: 'TOYOTA' });
+check('healthy snapshot reports ok', r.ok === true);
 
 console.log(`\n--- ${pass} passed, ${fail} failed ---\n`);
 if (fail > 0) process.exit(1);

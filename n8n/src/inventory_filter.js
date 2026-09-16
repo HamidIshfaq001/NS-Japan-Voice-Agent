@@ -6,8 +6,42 @@ const webhook = $('Retell Webhook').first().json;
 const body = webhook.body || webhook || {};
 const args = body.args || {};
 
-const snapshot = $('Fetch Stock Snapshot').first().json;
-let vehicles = Array.isArray(snapshot.vehicles) ? snapshot.vehicles : [];
+let snapshot = {};
+try {
+  snapshot = $('Fetch Stock Snapshot').first().json || {};
+} catch (e) {
+  snapshot = {};
+}
+
+// If the snapshot host is unreachable the agent must not improvise a stock list.
+// Tell it plainly what it can and cannot say.
+if (!Array.isArray(snapshot.vehicles) || snapshot.vehicles.length === 0) {
+  return [
+    {
+      json: {
+        ok: false,
+        total_matches: 0,
+        returned: 0,
+        vehicles: [],
+        summary_for_agent:
+          'The stock list could not be reached just now. Do NOT name any vehicle, ' +
+          'price or stock number - you have no data. Tell the caller you cannot pull ' +
+          'the live list up this moment, take their details and what they are looking ' +
+          'for, and tell them a specialist will email the matching vehicles with prices.',
+        // Keep this short. Everything returned here is fed to the LLM, and a full
+        // stack trace is both noise and a waste of the response budget.
+        error: (() => {
+          const e = snapshot.error;
+          if (!e) return 'stock snapshot unavailable or empty';
+          const msg = typeof e === 'string' ? e : e.message || String(e);
+          return String(msg).split('\n')[0].slice(0, 160);
+        })(),
+      },
+    },
+  ];
+}
+
+let vehicles = snapshot.vehicles;
 
 const norm = (s) => String(s === undefined || s === null ? '' : s).trim().toLowerCase();
 const has = (v) => v !== undefined && v !== null && String(v).trim() !== '';
