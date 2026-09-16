@@ -1,0 +1,149 @@
+[
+  {
+    "type": "custom",
+    "name": "search_inventory",
+    "description": "Search the live NS Japan Autos stock list for vehicles matching what the caller asked for. Call this whenever the caller mentions a make, model, body type, budget, year or asks what is available. Only pass the filters the caller actually gave you - omit everything else. Returns matching vehicles with year, make, model, price in US dollars, mileage, transmission, fuel, colour, steering and stock number.",
+    "url": "{{N8N_BASE_URL}}/webhook/nsjapan/inventory-search",
+    "method": "POST",
+    "parameter_type": "json",
+    "timeout_ms": 15000,
+    "max_retry": 1,
+    "speak_during_execution": true,
+    "execution_message_type": "prompt",
+    "execution_message_description": "In under ten words, tell the caller you are checking the stock list now. Vary the wording.",
+    "speak_after_execution": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "make": {
+          "type": "string",
+          "description": "Vehicle manufacturer, for example TOYOTA, NISSAN, SUBARU, HONDA, MAZDA, MITSUBISHI, LEXUS, MERCEDES BENZ, AUDI, BMW, VOLKSWAGEN, SUZUKI, FORD. Omit if the caller did not name a make."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model name, for example ALPHARD, FORESTER, LAND CRUISER PRADO, HIACE VAN, MARK X, RAV4, PREMIO, NOAH. Partial names are matched. Omit if not given."
+        },
+        "body_type": {
+          "type": "string",
+          "enum": ["SUV", "Sedan", "HatchBack", "Mini Van / 1 Box", "Commercial Van", "Station Wagon", "Truck", "Bus", "Coupe", "Compact"],
+          "description": "Body style the caller asked for. Omit if not given."
+        },
+        "price_min": {
+          "type": "number",
+          "description": "Minimum FOB price in US dollars. Omit unless the caller gave a lower bound."
+        },
+        "price_max": {
+          "type": "number",
+          "description": "Maximum FOB price in US dollars. Set this when the caller states a budget, for example a budget of five thousand dollars means price_max 5000."
+        },
+        "year_min": {
+          "type": "number",
+          "description": "Earliest registration year acceptable. Omit if not given."
+        },
+        "year_max": {
+          "type": "number",
+          "description": "Latest registration year acceptable. Omit if not given."
+        },
+        "transmission": {
+          "type": "string",
+          "enum": ["Automatic", "Manual", "Semi-Automatic"],
+          "description": "Omit unless the caller asked for a specific transmission."
+        },
+        "fuel": {
+          "type": "string",
+          "enum": ["Petrol", "Diesel", "Petrol-Hybrid", "Electric"],
+          "description": "Omit unless the caller asked for a specific fuel type."
+        },
+        "steering": {
+          "type": "string",
+          "enum": ["Right", "Left"],
+          "description": "Steering side. Omit unless the caller asked for it specifically."
+        },
+        "stock_id": {
+          "type": "string",
+          "description": "An exact stock number such as NS10632, if the caller read one out. When given, all other filters are ignored."
+        },
+        "keyword": {
+          "type": "string",
+          "description": "Free text to match against the vehicle title, for use when the caller describes the vehicle loosely and you cannot map it to a make or model."
+        },
+        "limit": {
+          "type": "number",
+          "description": "How many vehicles to return. Default 3. Never ask for more than 5 on a voice call."
+        }
+      },
+      "required": []
+    }
+  },
+  {
+    "type": "custom",
+    "name": "capture_lead",
+    "description": "Send the caller's details to the NS Japan Autos sales CRM so a specialist can follow up with a full quote. Call this exactly once per call, after you have collected the caller's details. Always include everything you learned during the call.",
+    "url": "{{N8N_BASE_URL}}/webhook/nsjapan/lead",
+    "method": "POST",
+    "parameter_type": "json",
+    "timeout_ms": 20000,
+    "max_retry": 2,
+    "speak_during_execution": true,
+    "execution_message_type": "prompt",
+    "execution_message_description": "In under ten words, tell the caller you are passing their details to the team now.",
+    "speak_after_execution": true,
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "full_name": {
+          "type": "string",
+          "description": "The caller's full name as they gave it."
+        },
+        "email": {
+          "type": "string",
+          "description": "The caller's email address, exactly as confirmed back to them. Omit if they would not give one."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The caller's phone number in international format with country code, for example +254712345678. Omit if not given."
+        },
+        "country": {
+          "type": "string",
+          "description": "Destination country where the vehicle will be registered and used."
+        },
+        "city_or_port": {
+          "type": "string",
+          "description": "Nearest port of discharge or the city for delivery, for example Dar Es Salaam, Durban, Karachi, Jebel Ali."
+        },
+        "interest_type": {
+          "type": "string",
+          "enum": ["vehicle_in_stock", "vehicle_sourcing", "auto_parts", "existing_order_support", "general_enquiry"],
+          "description": "What the caller wants. Use vehicle_in_stock when they picked a specific listed vehicle, vehicle_sourcing when we need to find one for them, auto_parts for a parts request, existing_order_support when they are chasing an order already placed."
+        },
+        "vehicle_interest": {
+          "type": "string",
+          "description": "Plain description of what they want, for example '2010 Toyota Alphard, automatic, under 7000 USD' or 'front bumper for 2009 Honda Fit'."
+        },
+        "stock_id": {
+          "type": "string",
+          "description": "The stock number of the specific vehicle they chose, such as NS10632, if they picked one from the search results."
+        },
+        "budget_usd": {
+          "type": "number",
+          "description": "Their stated budget in US dollars. Omit if they did not give one."
+        },
+        "timeline": {
+          "type": "string",
+          "description": "How soon they want to buy, in their own words, for example 'this month', 'within 2 weeks', 'just researching'."
+        },
+        "notes": {
+          "type": "string",
+          "description": "A short summary of the call for the sales team: what they asked about, any concerns raised, and anything that will help the specialist write the quote. Two or three sentences."
+        }
+      },
+      "required": ["full_name", "interest_type"]
+    }
+  },
+  {
+    "type": "end_call",
+    "name": "end_call",
+    "description": "End the call when the caller says goodbye, says they are finished, or when the conversation has clearly concluded and they have nothing else to ask.",
+    "speak_after_execution": false
+  }
+]

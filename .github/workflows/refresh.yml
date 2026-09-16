@@ -1,0 +1,75 @@
+name: Refresh stock from nsjapanautos.com
+
+# The website is not static, so the agent's stock data is re-read on a schedule.
+# The inventory search workflow in n8n reads data/inventory.json straight from this
+# repo, so committing here is what puts new stock in front of callers.
+
+on:
+  schedule:
+    # 21:00 UTC = 06:00 Japan time, before the office opens.
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Also push the refreshed knowledge base to Retell"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Refresh stock and facets
+        run: python scripts/refresh.py
+
+      - name: Verify the snapshot is usable
+        run: |
+          python - <<'PY'
+          import json, sys
+          inv = json.load(open("data/inventory.json", encoding="utf-8"))
+          n = inv.get("count", 0)
+          if n < 10:
+              sys.exit(f"refusing to commit: only {n} vehicles parsed - the site "
+                       f"markup has probably changed")
+          missing = [v["stock_id"] for v in inv["vehicles"] if not v.get("price_usd")]
+          if missing:
+              sys.exit(f"refusing to commit: {len(missing)} vehicles have no price")
+          print(f"snapshot looks good: {n} vehicles")
+          PY
+
+      - name: Run the search logic tests against the new snapshot
+        run: node scripts/test_inventory_filter.js
+
+      - name: Commit if anything changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ agent/knowledge-base/
+          if git diff --staged --quiet; then
+            echo "stock unchanged - nothing to commit"
+          else
+            COUNT=$(python -c "import json;print(json.load(open('data/inventory.json',encoding='utf-8'))['count'])")
+            git commit -m "chore: refresh stock snapshot (${COUNT} vehicles)"
+            git push
+          fi
+
+      - name: Push the refreshed knowledge base to Retell
+        if: ${{ inputs.deploy }}
+        env:
+          RETELL_API_KEY: ${{ secrets.RETELL_API_KEY }}
+          RETELL_AGENT_ID: ${{ secrets.RETELL_AGENT_ID }}
+          RETELL_LLM_ID: ${{ secrets.RETELL_LLM_ID }}
+          N8N_BASE_URL: ${{ secrets.N8N_BASE_URL }}
+        run: python scripts/deploy_retell.py

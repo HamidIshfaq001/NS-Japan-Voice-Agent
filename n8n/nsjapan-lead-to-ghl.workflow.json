@@ -1,0 +1,391 @@
+{
+  "name": "NS Japan - Retell Lead to GoHighLevel",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "nsjapan-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "f6a4da00-1ef6-5046-bab4-ec8c77ab8b11",
+      "name": "Retell Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -460,
+        0
+      ],
+      "webhookId": "ef560ea6-72c1-54e2-990c-f063a11eb095"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fb94b87a-d542-5abe-8fd4-ebf027b93b26",
+              "name": "ghl_location_id",
+              "value": "REPLACE_WITH_GHL_LOCATION_ID",
+              "type": "string"
+            },
+            {
+              "id": "e574f165-2d97-5057-ba9d-baf33dfe245c",
+              "name": "ghl_pipeline_id",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "eaedce42-8ad9-5b07-93bc-9d7e18433dd4",
+              "name": "ghl_pipeline_stage_id",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "b1138306-2ed5-5197-a3e6-c72e1b1e19f2",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Turns the Retell capture_lead payload into the shapes GoHighLevel expects.\n// Output: one item carrying the contact body, the note body, the opportunity body\n// and a short confirmation string for the voice agent.\n\nconst webhook = $('Retell Webhook').first().json;\nconst body = webhook.body || webhook || {};\nconst args = body.args || {};\nconst call = body.call || {};\nconst cfg = $('Config').first().json;\n\nconst str = (v) => (v === undefined || v === null ? '' : String(v).trim());\nconst has = (v) => str(v) !== '';\n\n// ---------------------------------------------------------------- name\nconst fullName = str(args.full_name) || 'Unknown caller';\nconst nameParts = fullName.split(/\\s+/).filter(Boolean);\nconst firstName = nameParts[0] || 'Unknown';\nconst lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';\n\n// ---------------------------------------------------------------- contact details\nlet email = str(args.email).toLowerCase().replace(/\\s+/g, '');\n// Voice transcription often writes \"name at gmail dot com\".\nemail = email\n  .replace(/\\(at\\)|\\[at\\]/g, '@')\n  .replace(/\\(dot\\)|\\[dot\\]/g, '.');\nif (email && !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)) {\n  email = ''; // Do not push a malformed address into the CRM.\n}\n\nlet phone = str(args.phone).replace(/[^\\d+]/g, '');\nif (phone && !phone.startsWith('+') && phone.length > 6) phone = '+' + phone;\n// Fall back to the caller ID when the caller did not read out a number.\nif (!phone) phone = str(call.from_number);\n\n// ---------------------------------------------------------------- country\nconst COUNTRY_ISO = {\n  'kenya': 'KE', 'tanzania': 'TZ', 'uganda': 'UG', 'zambia': 'ZM',\n  'zimbabwe': 'ZW', 'mozambique': 'MZ', 'malawi': 'MW', 'botswana': 'BW',\n  'namibia': 'NA', 'south africa': 'ZA', 'nigeria': 'NG', 'ghana': 'GH',\n  'congo': 'CD', 'drc': 'CD', 'rwanda': 'RW', 'burundi': 'BI',\n  'ethiopia': 'ET', 'somalia': 'SO', 'sudan': 'SD', 'mauritius': 'MU',\n  'pakistan': 'PK', 'india': 'IN', 'bangladesh': 'BD', 'sri lanka': 'LK',\n  'uae': 'AE', 'united arab emirates': 'AE', 'dubai': 'AE',\n  'saudi arabia': 'SA', 'oman': 'OM', 'qatar': 'QA', 'bahrain': 'BH',\n  'kuwait': 'KW', 'jordan': 'JO', 'iraq': 'IQ',\n  'united kingdom': 'GB', 'uk': 'GB', 'england': 'GB', 'ireland': 'IE',\n  'australia': 'AU', 'new zealand': 'NZ', 'fiji': 'FJ',\n  'papua new guinea': 'PG', 'solomon islands': 'SB',\n  'chile': 'CL', 'peru': 'PE', 'bolivia': 'BO', 'paraguay': 'PY',\n  'guyana': 'GY', 'suriname': 'SR',\n  'jamaica': 'JM', 'trinidad and tobago': 'TT', 'dominica': 'DM',\n  'dominican republic': 'DO', 'bahamas': 'BS', 'barbados': 'BB',\n  'guyana ': 'GY', 'haiti': 'HT', 'cuba': 'CU',\n  'russia': 'RU', 'georgia': 'GE', 'kazakhstan': 'KZ', 'mongolia': 'MN',\n  'myanmar': 'MM', 'philippines': 'PH', 'japan': 'JP',\n};\nconst countryRaw = str(args.country);\nconst countryIso = /^[A-Za-z]{2}$/.test(countryRaw)\n  ? countryRaw.toUpperCase()\n  : COUNTRY_ISO[countryRaw.toLowerCase()] || '';\n\n// ---------------------------------------------------------------- tags\nconst slug = (s) => str(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');\nconst interest = str(args.interest_type) || 'general_enquiry';\nconst budget = Number(args.budget_usd);\nconst budgetBand = !Number.isFinite(budget) || budget <= 0\n  ? null\n  : budget < 2000 ? 'budget-under-2k'\n  : budget < 4000 ? 'budget-2k-4k'\n  : budget < 6000 ? 'budget-4k-6k'\n  : budget < 10000 ? 'budget-6k-10k'\n  : 'budget-over-10k';\n\nconst tags = ['nsjapan-voice-lead', 'source-retell', 'interest-' + slug(interest)];\nif (countryRaw) tags.push('country-' + slug(countryRaw));\nif (budgetBand) tags.push(budgetBand);\nif (has(args.stock_id)) tags.push('stock-' + slug(args.stock_id));\nif (!email) tags.push('no-email-captured');\n\n// ---------------------------------------------------------------- contact body\nconst contact = {\n  locationId: cfg.ghl_location_id,\n  firstName,\n  lastName,\n  name: fullName,\n  source: 'Retell Voice Agent',\n  tags,\n};\nif (email) contact.email = email;\nif (phone) contact.phone = phone;\nif (countryIso) contact.country = countryIso;\nif (has(args.city_or_port)) contact.city = str(args.city_or_port);\n\n// ---------------------------------------------------------------- note\nconst when = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';\nconst noteLines = [\n  'NS JAPAN AUTOS - VOICE AGENT LEAD',\n  'Captured: ' + when,\n  '',\n  'Name: ' + fullName,\n  'Email: ' + (email || 'not given'),\n  'Phone: ' + (phone || 'not given'),\n  'Destination country: ' + (countryRaw || 'not given'),\n  'Nearest port / city: ' + (str(args.city_or_port) || 'not given'),\n  '',\n  'Interest: ' + interest,\n  'Looking for: ' + (str(args.vehicle_interest) || 'not specified'),\n  'Stock number: ' + (str(args.stock_id) || 'none selected'),\n  'Budget (USD): ' + (Number.isFinite(budget) && budget > 0 ? budget.toLocaleString('en-US') : 'not given'),\n  'Timeline: ' + (str(args.timeline) || 'not given'),\n  '',\n  'Agent notes: ' + (str(args.notes) || 'none'),\n];\nif (str(call.call_id)) {\n  noteLines.push('', 'Retell call ID: ' + str(call.call_id));\n}\nif (str(call.from_number)) {\n  noteLines.push('Caller ID: ' + str(call.from_number));\n}\nconst note = noteLines.join('\\n');\n\n// ---------------------------------------------------------------- opportunity\nconst oppName =\n  fullName +\n  ' - ' +\n  (str(args.vehicle_interest) || str(args.stock_id) || interest.replace(/_/g, ' '));\n\nconst opportunity = {\n  pipelineId: cfg.ghl_pipeline_id || '',\n  locationId: cfg.ghl_location_id,\n  name: oppName.slice(0, 120),\n  status: 'open',\n  source: 'Retell Voice Agent',\n};\nif (cfg.ghl_pipeline_stage_id) opportunity.pipelineStageId = cfg.ghl_pipeline_stage_id;\nif (Number.isFinite(budget) && budget > 0) opportunity.monetaryValue = budget;\n\nconst hasPipeline = Boolean(cfg.ghl_pipeline_id && String(cfg.ghl_pipeline_id).trim());\n\nreturn [\n  {\n    json: {\n      contact,\n      note,\n      opportunity,\n      hasPipeline,\n      lead_summary: {\n        name: fullName,\n        email: email || null,\n        phone: phone || null,\n        country: countryRaw || null,\n        interest,\n        stock_id: str(args.stock_id) || null,\n        budget_usd: Number.isFinite(budget) && budget > 0 ? budget : null,\n      },\n    },\n  },\n];\n"
+      },
+      "id": "7faff3bf-fdc4-51e5-848c-cdb1fca8ffe0",
+      "name": "Normalize Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/contacts/upsert",
+        "options": {
+          "timeout": 15000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.contact) }}"
+      },
+      "id": "5e866f8d-9f1d-5ba8-84b8-7a89d6fe09ad",
+      "name": "GHL Upsert Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        200,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b0869cf2-7c07-5715-9db9-50d9abb77498",
+          "name": "GoHighLevel Private Integration Token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Pull the contact id out of whichever shape GoHighLevel returned.\nconst res = $json || {};\nconst contact = res.contact || res.data || res;\nconst contactId = contact.id || contact._id || contact.contactId || null;\n\nif (!contactId) {\n  throw new Error(\n    'GoHighLevel did not return a contact id. Response: ' +\n    JSON.stringify(res).slice(0, 500)\n  );\n}\n\nreturn [{ json: { contactId, ghlContact: contact } }];\n"
+      },
+      "id": "f6868f31-2957-5b2c-a854-75b959402522",
+      "name": "Extract Contact ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://services.leadconnectorhq.com/contacts/' + $json.contactId + '/notes' }}",
+        "options": {
+          "timeout": 15000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ body: $('Normalize Lead').first().json.note }) }}"
+      },
+      "id": "f6046009-d957-58b8-b741-05d58ea62aa9",
+      "name": "GHL Add Note",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b0869cf2-7c07-5715-9db9-50d9abb77498",
+          "name": "GoHighLevel Private Integration Token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e5b02e37-f5d6-54d7-bc2c-0e8d4d29ed35",
+              "leftValue": "={{ $('Normalize Lead').first().json.hasPipeline }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "3573b902-19b1-5c7c-b024-3a76e16f49fa",
+      "name": "Pipeline Configured?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        860,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/opportunities/",
+        "options": {
+          "timeout": 15000
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "2021-07-28"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({}, $('Normalize Lead').first().json.opportunity, { contactId: $('Extract Contact ID').first().json.contactId })) }}"
+      },
+      "id": "1c4e9e06-c008-54d5-b895-11ab56926d61",
+      "name": "GHL Create Opportunity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1080,
+        -110
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "b0869cf2-7c07-5715-9db9-50d9abb77498",
+          "name": "GoHighLevel Private Integration Token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Assemble what the voice agent hears back.\nconst normalized = $('Normalize Lead').first().json;\n\nlet contactId = null;\ntry {\n  contactId = $('Extract Contact ID').first().json.contactId;\n} catch (e) {\n  contactId = null;\n}\n\nlet opportunityId = null;\ntry {\n  const opp = $('GHL Create Opportunity').first().json;\n  opportunityId = (opp.opportunity && opp.opportunity.id) || opp.id || null;\n} catch (e) {\n  opportunityId = null;\n}\n\nconst ok = Boolean(contactId);\n\nreturn [\n  {\n    json: {\n      ok,\n      crm: 'GoHighLevel',\n      contact_id: contactId,\n      opportunity_id: opportunityId,\n      lead: normalized.lead_summary,\n      message: ok\n        ? 'Lead saved to the CRM. Confirm to the caller that a specialist will email a ' +\n          'full quote including shipping to their port, usually within one business day.'\n        : 'The CRM did not confirm the save. Do not alarm the caller - tell them you ' +\n          'have their details and the team will be in touch, and offer ' +\n          'info@nsjapanautos.com as a backup.',\n    },\n  },\n];\n"
+      },
+      "id": "cbd54afd-6064-574a-931a-4ebc9c83f4e6",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "95565172-442e-5a53-a0d4-2696d4be53cc",
+      "name": "Respond to Retell",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1520,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Retell Webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Normalize Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Lead": {
+      "main": [
+        [
+          {
+            "node": "GHL Upsert Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Upsert Contact": {
+      "main": [
+        [
+          {
+            "node": "Extract Contact ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Contact ID": {
+      "main": [
+        [
+          {
+            "node": "GHL Add Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Add Note": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Configured?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pipeline Configured?": {
+      "main": [
+        [
+          {
+            "node": "GHL Create Opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GHL Create Opportunity": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Retell",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

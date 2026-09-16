@@ -1,0 +1,18 @@
+{
+  "name": "nsjapan-voice-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Retell AI voice agent for NS Japan Auto Ltd. - customer Q&A, live stock lookup and lead capture into GoHighLevel via n8n.",
+  "scripts": {
+    "test": "node scripts/test_inventory_filter.js && node scripts/test_lead_normalize.js",
+    "test:inventory": "node scripts/test_inventory_filter.js",
+    "test:lead": "node scripts/test_lead_normalize.js",
+    "serve": "node scripts/local_test_server.js",
+    "build:n8n": "python scripts/build_n8n_workflows.py",
+    "refresh": "python scripts/refresh.py",
+    "deploy": "python scripts/deploy_retell.py",
+    "test:live": "python scripts/test_agent_live.py"
+  },
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED"
+}
