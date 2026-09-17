@@ -190,6 +190,31 @@ VOICE_SPEED=1.05             # 1.0 is the model's natural pace
 EXPRESSIVE_TAGS=             # blank = all ten; or e.g. empathetic,curious,happy,excited,emphasis
 ```
 
+Every reply is required to carry **exactly three tags**, drawn from the Feeling and
+Stress groups. That quota is enforced in two places, because Retell's own default
+expressive guidance tells the model to use tags "sparingly - most lines have none",
+which fights a fixed quota. `agent/expressive_prompt.md` is pushed to the agent's
+`expressive_mode_prompt` field, which **replaces** that default; `agent/prompt.md`
+states the same rule in the main prompt.
+
+### Known conflict: expressive mode and the custom voice
+
+Retell's API reference says of `enable_expressive_mode`: *"Only applicable for platform
+voices."* This agent uses the custom ElevenLabs voice "Siren". The API accepts the
+combination without complaint, and `eleven_v3` supports audio tags natively, so it may
+work - but it is explicitly outside what Retell documents.
+
+If a test call shows no emotion, there are two ways out:
+
+1. **Keep Siren, drop Retell's tag set.** ElevenLabs v3 reads its own audio tags
+   directly: `[excited]` `[happy]` `[curious]` `[surprised]` `[sighs]` `[whispers]`
+   `[laughs]`. Note it does **not** know `[empathetic]`, `[emphasis]`, `[clear throat]`,
+   `[pause]` or `[long pause]` - those are Retell's vocabulary, and an unrecognised tag
+   risks being read aloud.
+2. **Switch to a platform voice**, where expressive mode is supported. Closest matches
+   to Siren: `retell-Willa` (British, middle aged), `retell-Marissa` or `retell-Sloane`
+   (American, middle aged). Set `voice_id` and redeploy.
+
 **Verifying emotion needs a real call.** Expressive Mode is a text-to-speech feature and
 exists only on voice agents - chat agents silently drop `enable_expressive_mode`, so the
 scripted conversation tests cannot observe tags. Confirm delivery with one test call from

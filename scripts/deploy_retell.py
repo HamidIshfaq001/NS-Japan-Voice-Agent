@@ -309,8 +309,18 @@ def main():
         raise SystemExit(f"EXPRESSIVE_TAGS contains values Retell will reject: {bad}\n"
                          f"Allowed: {', '.join(all_tags)}")
 
+    # Replaces Retell's default expressive guidance, which tells the model to use
+    # tags "sparingly - most lines have none". That directly fights a fixed quota,
+    # so the quota has to live here, not only in the main prompt.
+    expressive_prompt_path = os.path.join(ROOT, "agent", "expressive_prompt.md")
+    expressive_prompt = ""
+    if os.path.exists(expressive_prompt_path):
+        with open(expressive_prompt_path, encoding="utf-8") as fh:
+            expressive_prompt = fh.read()
+
     agent_payload = {
         "agent_name": "NS Japan Autos - Sara (Sales & Support)",
+        "expressive_mode_prompt": expressive_prompt,
         "language": "en-US",
         "timezone": "Asia/Tokyo",
         "voice_model": env.get("VOICE_MODEL", "eleven_v3"),
@@ -368,6 +378,9 @@ def main():
     print(f"      voice_model={agent.get('voice_model')} speed={agent.get('voice_speed')}")
     print(f"      expressive={agent.get('enable_expressive_mode')} "
           f"tags={agent.get('expressive_emotion_tags')}")
+    emp = agent.get("expressive_mode_prompt") or ""
+    print(f"      expressive_mode_prompt: {len(emp)} chars "
+          f"({'custom' if emp else 'Retell default'})")
 
     state["last_deploy"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     state["agent_id"] = env["RETELL_AGENT_ID"]
