@@ -55,7 +55,8 @@ def load_env():
                 k, v = line.split("=", 1)
                 env[k.strip()] = v.strip()
     for k, v in os.environ.items():
-        if k.startswith(("RETELL_", "N8N_", "GHL_", "INVENTORY_")) and v:
+        if k.startswith(("RETELL_", "N8N_", "GHL_", "INVENTORY_",
+                         "VOICE_", "EXPRESSIVE_")) and v:
             env[k] = v
     return env
 
@@ -297,10 +298,27 @@ def main():
 
     # ---------------------------------------------------------------- 3. Agent
     print("\n[3/3] updating agent settings ...")
+    # Expressive delivery. The tag list is exactly the set Retell accepts; anything
+    # else is rejected with a 400 naming the allowed values.
+    all_tags = ["empathetic", "excited", "happy", "curious", "surprised",
+                "sigh", "clear throat", "pause", "long pause", "emphasis"]
+    tags_cfg = env.get("EXPRESSIVE_TAGS", "").strip()
+    tags = [t.strip() for t in tags_cfg.split(",") if t.strip()] if tags_cfg else all_tags
+    bad = [t for t in tags if t not in all_tags]
+    if bad:
+        raise SystemExit(f"EXPRESSIVE_TAGS contains values Retell will reject: {bad}\n"
+                         f"Allowed: {', '.join(all_tags)}")
+
     agent_payload = {
         "agent_name": "NS Japan Autos - Sara (Sales & Support)",
         "language": "en-US",
         "timezone": "Asia/Tokyo",
+        "voice_model": env.get("VOICE_MODEL", "eleven_v3"),
+        "enable_expressive_mode": env.get("EXPRESSIVE_MODE", "true").lower() != "false",
+        "expressive_emotion_tags": tags,
+        # Expressive delivery adds a little drag, so nudge the rate up to keep the
+        # call feeling brisk. 1.0 is the model's natural pace.
+        "voice_speed": float(env.get("VOICE_SPEED", "1.05")),
         "interruption_sensitivity": 0.9,
         "responsiveness": 1,
         "enable_backchannel": True,
@@ -347,6 +365,9 @@ def main():
     agent = api.update_agent(env["RETELL_AGENT_ID"], agent_payload)
     print(f"      agent {agent.get('agent_id')} updated: {agent.get('agent_name')}")
     print(f"      timezone={agent.get('timezone')} voice={agent.get('voice_id')}")
+    print(f"      voice_model={agent.get('voice_model')} speed={agent.get('voice_speed')}")
+    print(f"      expressive={agent.get('enable_expressive_mode')} "
+          f"tags={agent.get('expressive_emotion_tags')}")
 
     state["last_deploy"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     state["agent_id"] = env["RETELL_AGENT_ID"]

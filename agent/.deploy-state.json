@@ -1,8 +1,8 @@
 {
   "knowledge_base_id": "knowledge_base_b1cfbc9cd1575cd4",
-  "last_deploy": "2026-09-16T13:09:12Z",
+  "last_deploy": "2026-09-17T06:52:56Z",
   "agent_id": "agent_da722581e2d2316443e7a042d1",
   "llm_id": "llm_6c97acc645b41073d8d5760c0b55",
   "n8n_ghl_credential_id": "TXUvTD2lowlJ3q1A",
-  "test_chat_agent_id": "agent_2c82ac868ca011202c57bfc32e"
+  "test_chat_agent_id": "agent_6aad7761e09224186af2c083e5"
 }

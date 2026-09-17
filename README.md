@@ -162,6 +162,41 @@ must never do), `lead` (the full capture flow), `tools` (stock lookup).
 
 ---
 
+## Voice and emotion
+
+The agent runs ElevenLabs `eleven_v3` on the custom "Siren" voice, with Retell's
+**Expressive Mode** on. Retell accepts exactly ten emotion tags - the API rejects
+anything else with a 400 listing the allowed values:
+
+| Group | Tags |
+|---|---|
+| Feeling | `empathetic` `excited` `happy` `curious` `surprised` |
+| Sound | `sigh` `clear throat` |
+| Stress | `emphasis` |
+| Timing | `pause` `long pause` |
+
+All ten are enabled. `agent/prompt.md` governs taste: two or three tags per reply drawn
+from the feeling and stress groups, `sigh` almost never, `clear throat` never, and the
+timing tags at most once or twice a call because they slow delivery. Tags are never
+placed on numbers, prices, stock numbers, emails or dates - those must come out plain,
+because they are what the caller is writing down.
+
+Tune without touching code, then re-run `python scripts/deploy_retell.py --skip-kb`:
+
+```bash
+VOICE_MODEL=eleven_v3        # or eleven_flash_v2_5 for lower latency
+EXPRESSIVE_MODE=true
+VOICE_SPEED=1.05             # 1.0 is the model's natural pace
+EXPRESSIVE_TAGS=             # blank = all ten; or e.g. empathetic,curious,happy,excited,emphasis
+```
+
+**Verifying emotion needs a real call.** Expressive Mode is a text-to-speech feature and
+exists only on voice agents - chat agents silently drop `enable_expressive_mode`, so the
+scripted conversation tests cannot observe tags. Confirm delivery with one test call from
+the Retell dashboard.
+
+---
+
 ## Notes on the source data
 
 **Mileage is published in thousands.** The website prints a Hiace's mileage as `596 km`
