@@ -146,6 +146,15 @@ curl -X POST localhost:8787/webhook/nsjapan-inventory-search \
 Set `GHL_TOKEN` and `GHL_LOCATION_ID` in the environment to make it push to GoHighLevel
 for real; otherwise the CRM call is simulated and logged.
 
+### Live conversation tests cost Retell credit
+
+Every scripted turn is a billed chat completion on your Retell account, and a full run
+is around 40 of them. A long debugging session can exhaust the balance - and when it
+does, real calls stop too, with `create-chat` and call creation returning
+`402 Credit balance exhausted`. Read-only API calls keep working, so configuration is
+unaffected. Run single suites while iterating rather than the full set, and run
+`python scripts/cleanup_test_agents.py --yes` when you are done.
+
 ### Live conversation tests
 
 `scripts/test_agent_live.py` talks to a Retell **chat** agent bound to the same Retell LLM
