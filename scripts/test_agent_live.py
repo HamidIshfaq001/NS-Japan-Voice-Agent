@@ -9,7 +9,7 @@ knowledge base - so what passes here is what the voice agent will do.
     python scripts/test_agent_live.py qa              # only the qa suite
     python scripts/test_agent_live.py guardrails lead
 
-Suites: qa, guardrails, lead, tools
+Suites: qa, guardrails, lead, tools, timezone, emotion
 """
 import json
 import os
@@ -55,26 +55,59 @@ def save_state(s):
 
 
 def ensure_chat_agent(force_new=False):
-    """A chat agent on the same LLM, so tests exercise the real prompt and tools."""
+    """
+    A chat agent running the CURRENT production prompt, tools and knowledge base.
+
+    Retell refuses to create a chat agent pinned above LLM version 0 ("Cannot specify
+    version > 0 for new agent") and refuses to repoint one afterwards. The production
+    LLM is on version 4, so binding a chat agent straight to it would silently test the
+    very first prompt ever deployed - which is exactly the trap that made several
+    earlier test runs meaningless.
+
+    So: copy the production LLM's current content into a throwaway LLM, where version 0
+    *is* the current prompt, and bind the chat agent to that. scripts/cleanup_test_agents.py
+    removes both.
+    """
     st = state()
+    live = requests.get(API + "/get-retell-llm/" + ENV["RETELL_LLM_ID"],
+                        headers=HEADERS, timeout=60).json()
+
     if not force_new and st.get("test_chat_agent_id"):
         r = requests.get(API + "/get-chat-agent/" + st["test_chat_agent_id"],
                          headers=HEADERS, timeout=60)
-        if r.ok:
+        # Only reuse it if the mirror still matches the live prompt.
+        if r.ok and st.get("test_mirror_prompt_len") == len(live.get("general_prompt", "")):
             return st["test_chat_agent_id"]
         st.pop("test_chat_agent_id", None)
-        save_state(st)
+
+    mirror = {
+        "model": live.get("model"),
+        "model_temperature": live.get("model_temperature"),
+        "general_prompt": live.get("general_prompt"),
+        "general_tools": live.get("general_tools"),
+        "knowledge_base_ids": live.get("knowledge_base_ids"),
+        "begin_message": live.get("begin_message"),
+        "start_speaker": live.get("start_speaker"),
+        "tool_call_strict_mode": live.get("tool_call_strict_mode"),
+    }
+    mirror = {k: v for k, v in mirror.items() if v is not None}
+    m = requests.post(API + "/create-retell-llm", headers=HEADERS, json=mirror, timeout=120)
+    m.raise_for_status()
+    mirror_llm_id = m.json()["llm_id"]
 
     r = requests.post(
         API + "/create-chat-agent", headers=HEADERS,
         json={
-            "response_engine": {"type": "retell-llm", "llm_id": ENV["RETELL_LLM_ID"]},
+            "response_engine": {"type": "retell-llm", "llm_id": mirror_llm_id},
             "agent_name": "NS Japan Autos - Sara (TEST HARNESS, chat)",
         }, timeout=60,
     )
     r.raise_for_status()
     agent_id = r.json()["agent_id"]
+
     st["test_chat_agent_id"] = agent_id
+    st["test_mirror_llm_id"] = mirror_llm_id
+    st["test_mirror_prompt_len"] = len(live.get("general_prompt", ""))
     save_state(st)
     return agent_id
 
@@ -157,7 +190,9 @@ QA = [
     ("office hours",
      ["What are your office hours?"],
      [("gives Mon-Fri", any_of("monday")),
-      ("gives Japan time", any_of("japan"))]),
+      ("gives the times", any_of("nine", "9")),
+      # The business does not want a timezone named; see the timezone suite.
+      ("names no timezone", absent("japan time", "jst", "japan standard"))]),
 
     # Commercially the most important answer on the call, so assert both halves of
     # it rather than one loose phrase: the price is the vehicle alone, AND the rest
@@ -295,7 +330,62 @@ TOOLS = [
      [("responds about that vehicle", any_of("alphard", "ns10632", "10632", "check"))]),
 ]
 
-SUITES = {"qa": QA, "guardrails": GUARDRAILS, "lead": LEAD, "tools": TOOLS}
+# The website and the model's own prior both want to append a timezone to the office
+# hours. The business does not want it said at all, so it gets its own suite.
+TIMEZONE = [
+    ("office hours carry no timezone",
+     ["What are your office hours?"],
+     [("gives the hours", any_of("monday")),
+      ("never names the timezone", absent("japan time", "jst", "japan standard"))]),
+
+    ("open right now carries no timezone",
+     ["Are you open right now?"],
+     [("never names the timezone", absent("japan time", "jst", "japan standard"))]),
+
+    ("converts to the caller's local time instead",
+     ["I am in Kenya, what time can I reach you?"],
+     [("answers in Kenyan time", any_of("kenya")),
+      ("never names the timezone", absent("japan time", "jst", "japan standard"))]),
+]
+
+ALLOWED_TAGS = {"empathetic", "excited", "happy", "curious", "surprised", "emphasis"}
+BANNED_TAGS = {"pause", "long pause", "sigh", "clear throat"}
+
+
+def _tags(text):
+    return re.findall(r"\[([^\]]+)\]", text)
+
+
+def exactly_three_tags_per_reply(replies):
+    return all(len([t for t in _tags(r) if t.lower() in ALLOWED_TAGS]) == 3
+               for r in replies if r.strip())
+
+
+def no_banned_tags(replies):
+    return not any(t.lower() in BANNED_TAGS for r in replies for t in _tags(r))
+
+
+def no_unknown_tags(replies):
+    return not any(t.lower() not in ALLOWED_TAGS for r in replies for t in _tags(r))
+
+
+def no_tag_on_a_number(replies):
+    return not any(re.search(r"\[[^\]]+\]\s*\$?\d", r) for r in replies)
+
+
+EMOTION = [
+    ("three tags on a factual answer",
+     ["Does the website price include shipping to Mombasa?"], []),
+    ("three tags on an empathetic moment",
+     ["Where is my car? I paid three weeks ago."], []),
+    ("three tags on a refusal",
+     ["Can you write a lower price on the invoice?"], []),
+    ("three tags when quoting a price",
+     ["What is the cheapest car you have?"], []),
+]
+
+SUITES = {"qa": QA, "guardrails": GUARDRAILS, "lead": LEAD, "tools": TOOLS,
+          "timezone": TIMEZONE, "emotion": EMOTION}
 
 
 def run_suite(agent_id, suite_name, cases, verbose):
@@ -322,7 +412,21 @@ def run_suite(agent_id, suite_name, cases, verbose):
             continue
 
         text = convo.agent_text()
+        replies = [w for who, w in convo.turns if who == "agent"]
         case_fail = []
+
+        if suite_name == "emotion":
+            checks = [
+                ("exactly three valid tags in every reply",
+                 lambda _t: exactly_three_tags_per_reply(replies)),
+                ("no pause, sigh or throat-clear tags",
+                 lambda _t: no_banned_tags(replies)),
+                ("no tags outside the allowed set",
+                 lambda _t: no_unknown_tags(replies)),
+                ("no tag placed on a number or price",
+                 lambda _t: no_tag_on_a_number(replies)),
+            ]
+
         for check_name, predicate in checks:
             if predicate(text):
                 passed += 1

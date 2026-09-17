@@ -20,7 +20,7 @@ FUKUOKA PROVINCE, KOGA CITY, MUSHIROUCHI #719-1, JAPAN 811-3121
 - Email: info@nsjapanautos.com
 
 ## Office hours
-Monday to Friday, 9:00 a.m. to 6:00 p.m. Japan time (JST).
+Monday to Friday, 9:00 a.m. to 6:00 p.m. at the head office.
 Lunch break is 12:00 p.m. to 1:00 p.m.
 
 Closed on:
@@ -30,7 +30,8 @@ Closed on:
 - Summer Holiday (several days in mid-August)
 - Seminar sessions (a few days throughout the year)
 
-Long holidays vary in length each year; exact dates are announced as the season approaches.
+Long holidays vary in length each year; exact dates are announced as the season
+approaches.
 
 ## Leadership
 - Chairperson: Ahmad Naseem

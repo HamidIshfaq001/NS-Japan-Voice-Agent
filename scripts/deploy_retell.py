@@ -28,10 +28,14 @@ KB_NAME = "NS Japan Autos Knowledge"
 # Live pages Retell re-crawls on a daily auto-refresh. The curated markdown in
 # agent/knowledge-base gives the agent clean, well-structured answers; these keep it
 # honest when the site itself changes.
+# faq-gq is deliberately NOT here. It is the one page that prints the office hours as
+# "(Japan time)", and as a retrieved chunk it beat every prompt instruction telling the
+# agent to drop the timezone - the model quoted the page verbatim. Everything else on
+# that page (FOB, languages, discount codes, parts) is already covered by the curated
+# documents in agent/knowledge-base, so nothing is lost by leaving it out.
 KB_URLS = [
     "https://nsjapanautos.com/about/",
     "https://nsjapanautos.com/contact/",
-    "https://nsjapanautos.com/faq-gq/",
     "https://nsjapanautos.com/faq-i/",
     "https://nsjapanautos.com/faq-bp/",
     "https://nsjapanautos.com/faq-bs/",

@@ -158,7 +158,9 @@ python scripts/test_agent_live.py qa -v        # one suite, with transcripts
 ```
 
 Suites: `qa` (facts from the knowledge base), `guardrails` (refusals and things the agent
-must never do), `lead` (the full capture flow), `tools` (stock lookup).
+must never do), `lead` (the full capture flow), `tools` (stock lookup), `timezone` (the
+office hours must never carry a timezone), `emotion` (exactly three valid tags per reply,
+none banned, none on a number).
 
 ---
 
@@ -190,6 +192,11 @@ VOICE_SPEED=1.05             # 1.0 is the model's natural pace
 EXPRESSIVE_TAGS=             # blank = all ten; or e.g. empathetic,curious,happy,excited,emphasis
 ```
 
+The enabled set is deliberately the six that add **no silence**: `empathetic` `excited`
+`happy` `curious` `surprised` `emphasis`. `pause`, `long pause`, `sigh` and `clear throat`
+are switched off — they stall the call, and dead air on an international line reads as a
+dropped connection, not thoughtfulness.
+
 Every reply is required to carry **exactly three tags**, drawn from the Feeling and
 Stress groups. That quota is enforced in two places, because Retell's own default
 expressive guidance tells the model to use tags "sparingly - most lines have none",
@@ -215,7 +222,20 @@ If a test call shows no emotion, there are two ways out:
    to Siren: `retell-Willa` (British, middle aged), `retell-Marissa` or `retell-Sloane`
    (American, middle aged). Set `voice_id` and redeploy.
 
-**Verifying emotion needs a real call.** Expressive Mode is a text-to-speech feature and
+### The chat test harness mirrors the LLM, and must
+
+Retell refuses to create a chat agent pinned above LLM version 0 — *"Cannot specify
+version > 0 for new agent"* — and refuses to repoint one afterwards. The production LLM
+is on version 4+, so a chat agent bound straight to it silently runs **the very first
+prompt ever deployed**. That trap made several test runs meaningless before it was
+caught: the tests kept reporting old behaviour while the voice agent ran something else.
+
+`ensure_chat_agent()` therefore copies the live prompt, tools and knowledge base into a
+throwaway LLM, where version 0 *is* the current prompt, and binds the chat agent to that.
+Run `python scripts/cleanup_test_agents.py --yes` afterwards to remove the leftovers; it
+refuses to touch the production agent, LLM or knowledge base.
+
+**Verifying tone still needs a real call.** Expressive Mode is a text-to-speech feature and
 exists only on voice agents - chat agents silently drop `enable_expressive_mode`, so the
 scripted conversation tests cannot observe tags. Confirm delivery with one test call from
 the Retell dashboard.
